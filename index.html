@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI Logistics Command Center — freight dispatch operations dashboard">
+  <title>AI Logistics Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+        <span><b>Northstar</b><small>LOGISTICS INTELLIGENCE</small></span>
+      </a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="nav">
+        <a class="nav-link active" href="#overview" data-page="overview"><span class="nav-icon">▦</span> Overview</a>
+        <a class="nav-link" href="#loads" data-page="loads"><span class="nav-icon">▤</span> Load board <span class="nav-count">24</span></a>
+        <a class="nav-link" href="#fleet" data-page="fleet"><span class="nav-icon">◫</span> Fleet & drivers</a>
+        <a class="nav-link" href="#dispatch" data-page="dispatch"><span class="nav-icon">⌁</span> Dispatch</a>
+        <a class="nav-link" href="#finance" data-page="finance"><span class="nav-icon">$</span> Finance</a>
+        <a class="nav-link" href="#analytics" data-page="analytics"><span class="nav-icon">▥</span> Analytics</a>
+      </nav>
+      <div class="workspace-label second-label">INTELLIGENCE</div>
+      <nav class="nav">
+        <a class="nav-link" href="#agents" data-page="agents"><span class="nav-icon">✧</span> AI employees <span class="live-dot"></span></a>
+        <a class="nav-link" href="#reports" data-page="reports"><span class="nav-icon">▧</span> Daily reports</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="system-card">
+          <div class="system-head"><span class="live-dot"></span> System status <b>Operational</b></div>
+          <div class="system-line"><span>API services</span><strong>Demo mode</strong></div>
+          <div class="system-line"><span>AI employees</span><strong>Not connected</strong></div>
+          <div class="system-progress"><span></span></div>
+          <small>Connect your agents to enable live operations.</small>
+        </div>
+        <div class="profile">
+          <div class="avatar">KM</div><div><b>Kamilla M.</b><small>Administrator</small></div><span class="more">•••</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="Toggle menu">☰</button>
+        <div class="breadcrumb">Workspace <span>/</span> <b id="breadcrumbPage">Overview</b></div>
+        <div class="top-actions">
+          <div class="search-box"><span>⌕</span><input id="globalSearch" placeholder="Search loads, drivers..." aria-label="Search"></div>
+          <button class="icon-btn" title="Notifications">♧<em></em></button>
+          <div class="top-date" id="todayDate">—</div>
+        </div>
+      </header>
+
+      <section class="page active-page" id="page-overview">
+        <div class="page-heading">
+          <div><div class="eyebrow">SATURDAY, OPERATIONS OVERVIEW</div><h1>Good afternoon, Kamilla <span class="wave">✦</span></h1><p>Here’s what’s happening across your logistics network today.</p></div>
+          <div class="heading-actions"><button class="btn btn-secondary" id="exportBtn">↓ Export report</button><button class="btn btn-primary" id="newLoadBtn">＋ Create load</button></div>
+        </div>
+        <div class="kpi-grid">
+          <article class="kpi-card"><div class="kpi-top"><span>Active loads</span><span class="kpi-icon purple">▤</span></div><div class="kpi-value">128 <span class="trend up">↗ 12.8%</span></div><div class="kpi-foot">vs. previous 30 days</div><div class="sparkline purple-line"><svg viewBox="0 0 180 38"><polyline points="0,29 18,23 35,27 53,14 70,20 88,11 105,17 123,8 140,13 158,5 180,8"/></svg></div></article>
+          <article class="kpi-card"><div class="kpi-top"><span>On-time delivery</span><span class="kpi-icon green">◷</span></div><div class="kpi-value">96.4% <span class="trend up">↗ 2.4%</span></div><div class="kpi-foot">Target: 95.0%</div><div class="sparkline green-line"><svg viewBox="0 0 180 38"><polyline points="0,27 18,23 35,26 53,18 70,20 88,12 105,16 123,9 140,12 158,5 180,7"/></svg></div></article>
+          <article class="kpi-card"><div class="kpi-top"><span>Gross revenue</span><span class="kpi-icon blue">$</span></div><div class="kpi-value">$84,290 <span class="trend up">↗ 8.1%</span></div><div class="kpi-foot">This month · USD</div><div class="sparkline blue-line"><svg viewBox="0 0 180 38"><polyline points="0,30 18,26 35,28 53,20 70,23 88,15 105,19 123,11 140,14 158,7 180,4"/></svg></div></article>
+          <article class="kpi-card"><div class="kpi-top"><span>Available trucks</span><span class="kpi-icon orange">▰</span></div><div class="kpi-value">34 <span class="trend neutral">of 52 total</span></div><div class="kpi-foot">65% fleet utilization</div><div class="util-bar"><span></span></div></article>
+        </div>
+
+        <div class="content-grid">
+          <article class="panel map-panel">
+            <div class="panel-header"><div><h2>Live fleet overview</h2><p>Truck locations across the United States</p></div><button class="select-btn">United States⌄</button></div>
+            <div class="map-wrap">
+              <div class="map-grid"></div>
+              <svg class="us-map" viewBox="0 0 760 390" role="img" aria-label="Stylized map of the United States">
+                <path d="M74 87 L125 68 180 76 224 62 280 72 326 62 372 77 420 68 468 85 520 79 564 99 612 92 666 119 680 153 654 174 661 207 630 223 614 254 578 270 557 300 512 292 484 312 445 294 414 309 380 287 342 297 307 278 269 287 235 269 201 276 174 251 143 245 124 216 101 203 91 167 66 145 Z" />
+                <path class="state-line" d="M125 68 L143 245 M180 76 L174 251 M224 62 L235 269 M280 72 L269 287 M326 62 L307 278 M372 77 L342 297 M420 68 L414 309 M468 85 L445 294 M520 79 L512 292 M564 99 L557 300 M612 92 L578 270 M74 145 L680 153 M91 167 L661 207 M101 203 L630 223 M124 216 L614 254" />
+                <path class="route route-a" d="M158 171 C245 112 310 194 391 159 S530 128 608 188"/>
+                <path class="route route-b" d="M209 239 C293 267 371 228 447 248 S548 246 612 188"/>
+              </svg>
+              <div class="map-label label-west">LOS ANGELES</div><div class="map-label label-mid">DALLAS</div><div class="map-label label-east">CHICAGO</div><div class="map-label label-north">NEW YORK</div>
+              <span class="truck-pin pin-1">▰</span><span class="truck-pin pin-2">▰</span><span class="truck-pin pin-3">▰</span><span class="truck-pin pin-4">▰</span><span class="truck-pin pin-5">▰</span>
+              <div class="map-legend"><span><i class="legend-dot moving"></i> In transit <b>28</b></span><span><i class="legend-dot idle"></i> Idle <b>6</b></span><span><i class="legend-dot delayed"></i> Delayed <b>2</b></span></div>
+            </div>
+          </article>
+          <article class="panel performance-panel">
+            <div class="panel-header"><div><h2>Revenue performance</h2><p>Monthly gross revenue</p></div><button class="select-btn">Last 7 months⌄</button></div>
+            <div class="chart-summary"><strong>$84,290</strong><span class="trend up">↗ 8.1%</span><small>vs. last month</small></div>
+            <div class="bar-chart">
+              <div class="y-labels"><span>$100k</span><span>$75k</span><span>$50k</span><span>$25k</span><span>$0</span></div>
+              <div class="bars">
+                <div class="bar-col"><i style="height:48%"></i><small>May</small></div><div class="bar-col"><i style="height:61%"></i><small>Jun</small></div><div class="bar-col"><i style="height:54%"></i><small>Jul</small></div><div class="bar-col"><i style="height:72%"></i><small>Aug</small></div><div class="bar-col"><i style="height:66%"></i><small>Sep</small></div><div class="bar-col"><i style="height:82%"></i><small>Oct</small></div><div class="bar-col current"><i style="height:91%"></i><small>Nov</small></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="bottom-grid">
+          <article class="panel loads-panel">
+            <div class="panel-header"><div><h2>Recent loads</h2><p>Latest activity from your dispatch board</p></div><a class="text-link" href="#loads" data-page="loads">View all loads →</a></div>
+            <div class="table-scroll"><table><thead><tr><th>LOAD ID</th><th>ROUTE</th><th>DRIVER</th><th>STATUS</th><th>RATE</th></tr></thead><tbody id="recentLoads"></tbody></table></div>
+          </article>
+          <article class="panel agents-panel">
+            <div class="panel-header"><div><h2>AI employees</h2><p>Your automated operations team</p></div><a class="text-link" href="#agents" data-page="agents">Manage →</a></div>
+            <div class="agent-mini-list" id="agentMiniList"></div>
+            <div class="agent-note"><span>✧</span><div><b>Connect your AI team</b><small>Agent activity will appear here once configured.</small></div></div>
+          </article>
+        </div>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Demo environment · Data is illustrative</span></footer>
+      </section>
+
+      <section class="page" id="page-loads">
+        <div class="page-heading"><div><div class="eyebrow">OPERATIONS / LOAD MANAGEMENT</div><h1>Load board</h1><p>Track shipments, manage assignments, and monitor delivery status.</p></div><button class="btn btn-primary" id="newLoadBtn2">＋ Create load</button></div>
+        <div class="filter-row"><div class="search-box table-search">⌕ <input id="loadSearch" placeholder="Search by load, city or driver..."></div><select id="statusFilter"><option value="all">All statuses</option><option>In Transit</option><option>Delivered</option><option>Delayed</option><option>Pending</option></select><button class="btn btn-secondary" id="clearFilters">Reset filters</button></div>
+        <article class="panel full-table"><div class="panel-header"><div><h2>All shipments <span class="subtle-count" id="loadCount">8</span></h2><p>Sample shipment data · USD</p></div><button class="btn btn-secondary" id="exportLoads">↓ Export CSV</button></div><div class="table-scroll"><table><thead><tr><th>LOAD ID</th><th>ORIGIN</th><th>DESTINATION</th><th>DRIVER</th><th>PICKUP</th><th>DELIVERY</th><th>STATUS</th><th>RATE</th></tr></thead><tbody id="allLoads"></tbody></table></div></article>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Demo environment · Data is illustrative</span></footer>
+      </section>
+
+      <section class="page" id="page-fleet">
+        <div class="page-heading"><div><div class="eyebrow">OPERATIONS / FLEET MANAGEMENT</div><h1>Fleet & drivers</h1><p>Monitor equipment availability and driver assignments.</p></div><button class="btn btn-primary" id="addDriver">＋ Add driver</button></div>
+        <div class="kpi-grid compact-kpis"><article class="kpi-card"><div class="kpi-top"><span>Total trucks</span><span class="kpi-icon purple">▰</span></div><div class="kpi-value">52</div><div class="kpi-foot">Across 12 states</div></article><article class="kpi-card"><div class="kpi-top"><span>On the road</span><span class="kpi-icon green">⌁</span></div><div class="kpi-value">28</div><div class="kpi-foot">53.8% of fleet</div></article><article class="kpi-card"><div class="kpi-top"><span>Available</span><span class="kpi-icon blue">✓</span></div><div class="kpi-value">34</div><div class="kpi-foot">Ready for dispatch</div></article><article class="kpi-card"><div class="kpi-top"><span>Needs attention</span><span class="kpi-icon orange">!</span></div><div class="kpi-value">3</div><div class="kpi-foot">Maintenance / documents</div></article></div>
+        <article class="panel full-table"><div class="panel-header"><div><h2>Driver directory</h2><p>Driver roster and current assignments</p></div><div class="search-box table-search"><input id="driverSearch" placeholder="Search drivers..."></div></div><div class="table-scroll"><table><thead><tr><th>DRIVER</th><th>UNIT</th><th>LOCATION</th><th>ASSIGNMENT</th><th>HOURS AVAILABLE</th><th>STATUS</th></tr></thead><tbody id="driverRows"></tbody></table></div></article>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Demo environment · Data is illustrative</span></footer>
+      </section>
+
+      <section class="page" id="page-dispatch">
+        <div class="page-heading"><div><div class="eyebrow">OPERATIONS / DISPATCH</div><h1>Dispatch center</h1><p>Coordinate active loads and keep your network moving.</p></div><button class="btn btn-primary" id="dispatchAction">＋ New assignment</button></div>
+        <div class="dispatch-grid"><article class="panel dispatch-map"><div class="panel-header"><div><h2>Network activity</h2><p>Illustrative active routes</p></div><span class="status-pill status-transit">● LIVE DEMO</span></div><div class="large-map"><div class="large-map-lines"></div><div class="route-point rp1">LA</div><div class="route-point rp2">DAL</div><div class="route-point rp3">CHI</div><div class="route-point rp4">NYC</div><div class="route-path"></div><div class="map-caption">UNITED STATES · ROUTE NETWORK</div></div></article><article class="panel"><div class="panel-header"><div><h2>Dispatch queue</h2><p>Loads requiring attention</p></div></div><div class="queue-list" id="dispatchQueue"></div></article></div>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Demo environment · Data is illustrative</span></footer>
+      </section>
+
+      <section class="page" id="page-finance">
+        <div class="page-heading"><div><div class="eyebrow">BUSINESS / FINANCIALS</div><h1>Finance overview</h1><p>Understand revenue, operating costs, and load profitability.</p></div><button class="btn btn-secondary" id="financeExport">↓ Export data</button></div>
+        <div class="kpi-grid"><article class="kpi-card"><div class="kpi-top"><span>Gross revenue</span><span class="kpi-icon blue">$</span></div><div class="kpi-value">$84,290</div><div class="kpi-foot">November · USD</div></article><article class="kpi-card"><div class="kpi-top"><span>Carrier payouts</span><span class="kpi-icon purple">↗</span></div><div class="kpi-value">$59,840</div><div class="kpi-foot">71.0% of revenue</div></article><article class="kpi-card"><div class="kpi-top"><span>Gross profit</span><span class="kpi-icon green">◈</span></div><div class="kpi-value">$24,450</div><div class="kpi-foot">29.0% gross margin</div></article><article class="kpi-card"><div class="kpi-top"><span>Avg. rate / mile</span><span class="kpi-icon orange">⌁</span></div><div class="kpi-value">$2.48</div><div class="kpi-foot">Illustrative network average</div></article></div>
+        <div class="content-grid finance-grid"><article class="panel"><div class="panel-header"><div><h2>Revenue breakdown</h2><p>Current month</p></div></div><div class="finance-breakdown"><div class="donut"><div><b>$84.3k</b><small>Total revenue</small></div></div><div class="legend-list"><span><i class="legend-swatch swatch-purple"></i> Carrier payouts <b>$59,840</b></span><span><i class="legend-swatch swatch-green"></i> Gross profit <b>$24,450</b></span></div></div></article><article class="panel"><div class="panel-header"><div><h2>Financial health</h2><p>Operational indicators</p></div></div><div class="health-list"><div><span>Gross margin</span><b>29.0%</b><div class="health-track"><i style="width:72%"></i></div></div><div><span>Revenue target</span><b>84%</b><div class="health-track"><i style="width:84%"></i></div></div><div><span>Invoice collection</span><b>92%</b><div class="health-track"><i style="width:92%"></i></div></div></div></article></div>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Demo environment · Data is illustrative</span></footer>
+      </section>
+
+      <section class="page" id="page-analytics">
+        <div class="page-heading"><div><div class="eyebrow">INTELLIGENCE / PERFORMANCE</div><h1>Analytics</h1><p>Key performance indicators for your logistics operation.</p></div><button class="btn btn-secondary" id="analyticsExport">↓ Export report</button></div>
+        <div class="kpi-grid"><article class="kpi-card"><div class="kpi-top"><span>Loads completed</span><span class="kpi-icon purple">✓</span></div><div class="kpi-value">386 <span class="trend up">↗ 14%</span></div><div class="kpi-foot">This month</div></article><article class="kpi-card"><div class="kpi-top"><span>Avg. delivery time</span><span class="kpi-icon green">◷</span></div><div class="kpi-value">2.4 days</div><div class="kpi-foot">↓ 0.3 days vs. last month</div></article><article class="kpi-card"><div class="kpi-top"><span>Empty miles</span><span class="kpi-icon orange">⌁</span></div><div class="kpi-value">8.2%</div><div class="kpi-foot">Target below 10%</div></article><article class="kpi-card"><div class="kpi-top"><span>Customer score</span><span class="kpi-icon blue">☆</span></div><div class="kpi-value">4.8/5</div><div class="kpi-foot">Based on sample feedback</div></article></div>
+        <article class="panel analytics-panel"><div class="panel-header"><div><h2>Operational scorecard</h2><p>Monthly target vs. current performance</p></div></div><div class="score-rows"><div><span>On-time delivery</span><div class="score-track"><i style="width:96.4%"></i></div><b>96.4%</b><small>Target 95%</small></div><div><span>Load acceptance</span><div class="score-track"><i style="width:89%"></i></div><b>89.0%</b><small>Target 90%</small></div><div><span>Fleet utilization</span><div class="score-track"><i style="width:65%"></i></div><b>65.0%</b><small>Target 75%</small></div><div><span>Invoice collection</span><div class="score-track"><i style="width:92%"></i></div><b>92.0%</b><small>Target 90%</small></div></div></article>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Demo environment · Data is illustrative</span></footer>
+      </section>
+
+      <section class="page" id="page-agents">
+        <div class="page-heading"><div><div class="eyebrow">INTELLIGENCE / AUTOMATION</div><h1>AI employees</h1><p>Eight specialized agents designed to support your logistics business.</p></div><span class="status-pill status-pending">NOT CONNECTED</span></div>
+        <div class="notice"><span>✧</span><div><b>Agent workspace is in setup mode</b><p>This dashboard is a front-end prototype. Connect the local AI Employees framework and configure agent permissions before enabling real actions.</p></div></div>
+        <div class="agent-grid" id="agentGrid"></div>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Agent actions are not active in this demo</span></footer>
+      </section>
+
+      <section class="page" id="page-reports">
+        <div class="page-heading"><div><div class="eyebrow">INTELLIGENCE / REPORTING</div><h1>Daily reports</h1><p>Centralized summaries from your AI employees.</p></div><button class="btn btn-primary" id="generateReport">＋ Generate demo report</button></div>
+        <div class="notice"><span>▧</span><div><b>Reporting pipeline not connected</b><p>When configured, the Chief of Staff agent can collect each agent's run folder into a daily master report, then send it to Sheets and Telegram.</p></div></div>
+        <article class="panel report-panel"><div class="panel-header"><div><h2>Report history</h2><p>Daily operations summaries</p></div><span class="status-pill status-pending">AWAITING FIRST SYNC</span></div><div id="reportHistory" class="empty-state"><div class="empty-icon">▤</div><b>No reports yet</b><p>Your daily summaries will appear here after the reporting pipeline is configured.</p></div></article>
+        <footer>© 2026 Northstar Logistics Intelligence <span>Demo environment · Data is illustrative</span></footer>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <div class="modal-head"><div><div class="eyebrow">LOAD MANAGEMENT</div><h2>Create a new load</h2></div><button class="close-modal" id="closeModal">×</button></div>
+      <form id="loadForm">
+        <label>Origin city<input name="origin" required placeholder="e.g. Los Angeles, CA"></label>
+        <label>Destination city<input name="destination" required placeholder="e.g. Dallas, TX"></label>
+        <div class="form-row"><label>Driver<input name="driver" required placeholder="Driver name"></label><label>Rate (USD)<input name="rate" type="number" min="1" required placeholder="2500"></label></div>
+        <div class="form-row"><label>Pickup date<input name="pickup" type="date" required></label><label>Delivery date<input name="delivery" type="date" required></label></div>
+        <button class="btn btn-primary form-submit" type="submit">Create demo load</button>
+        <p class="form-hint">Saved in this browser session only. No backend is connected.</p>
+      </form>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
