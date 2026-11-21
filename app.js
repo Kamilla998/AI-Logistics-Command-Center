@@ -713,3 +713,427 @@ function setup() {
 }
 
 document.addEventListener("DOMContentLoaded", setup);
+
+/* =========================================
+   PHASE 2 — SMART DISPATCH ASSISTANT
+   ========================================= */
+
+const SMART_DISPATCH_CSS = `
+.smart-dispatch {
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid #253246;
+  border-radius: 12px;
+  background: #111b29;
+}
+.smart-dispatch h2 {
+  font-size: 18px;
+  margin: 0 0 7px;
+}
+.smart-dispatch p {
+  color: #899bb3;
+  font-size: 12px;
+}
+.smart-dispatch-controls {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+}
+.smart-dispatch select {
+  flex: 1;
+  min-width: 220px;
+  background: #0b1420;
+  color: #e8eef8;
+  border: 1px solid #2b3a50;
+  padding: 12px;
+  border-radius: 7px;
+}
+.smart-dispatch-btn {
+  background: #8060e8;
+  border: 0;
+  color: white;
+  padding: 11px 18px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.smart-dispatch-btn:hover {
+  background: #9679f0;
+}
+.smart-driver-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(220px,1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.smart-driver-card {
+  background: #0c1623;
+  border: 1px solid #29374b;
+  border-radius: 9px;
+  padding: 16px;
+}
+.smart-driver-card.best {
+  border-color: #8060e8;
+  box-shadow: 0 0 18px #8060e822;
+}
+.smart-driver-name {
+  font-weight: 700;
+  color: #edf2ff;
+  margin-bottom: 8px;
+}
+.smart-driver-meta {
+  color: #91a3ba;
+  font-size: 12px;
+  line-height: 1.9;
+}
+.smart-score {
+  font-size: 25px;
+  font-weight: 800;
+  color: #a58bff;
+  margin: 10px 0;
+}
+.smart-match-label {
+  font-size: 10px;
+  color: #ad98ff;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+.smart-assign {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px;
+  border-radius: 6px;
+  background: #26364d;
+  border: 1px solid #394d68;
+  color: white;
+  cursor: pointer;
+}
+.smart-assign:hover {
+  background: #8060e8;
+}
+.smart-empty {
+  padding: 20px;
+  color: #9aabc0;
+  background: #0c1623;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.smart-dispatch-note {
+  margin-top: 16px;
+  padding: 11px;
+  background: #18243a;
+  border-radius: 7px;
+  color: #aebbd0;
+  font-size: 11px;
+}
+`;
+
+/* Regional grouping for demo matching */
+const dispatchRegions = {
+  CA:"West", WA:"West", OR:"West", NV:"West",
+  AZ:"West", CO:"Mountain", UT:"Mountain",
+  TX:"South", FL:"South", GA:"South",
+  TN:"South", NC:"South", SC:"South",
+  IL:"Midwest", MO:"Midwest", OH:"Midwest",
+  MI:"Midwest", MN:"Midwest", WI:"Midwest",
+  NY:"Northeast", MA:"Northeast", PA:"Northeast",
+  NJ:"Northeast", CT:"Northeast"
+};
+
+function getState(location) {
+  const match = String(location).match(/,\s*([A-Z]{2})$/);
+  return match ? match[1] : "";
+}
+
+function getDispatchCandidates(load) {
+  return drivers
+    .filter(driver => {
+      const alreadyAssigned = loads.some(item =>
+        item.id !== load.id &&
+        item.driver === driver[0] &&
+        ["Pending","In Transit","Delayed"].includes(item.status)
+      );
+
+      return driver[5] === "Available" && !alreadyAssigned;
+    })
+    .map(driver => {
+      const originState = getState(load.origin);
+      const driverState = getState(driver[2]);
+
+      let score = 55;
+
+      if (originState && driverState === originState) {
+        score += 35;
+      } else if (
+        dispatchRegions[originState] &&
+        dispatchRegions[originState] === dispatchRegions[driverState]
+      ) {
+        score += 22;
+      }
+
+      if (driver[5] === "Available") score += 10;
+
+      score = Math.min(score, 99);
+
+      return {
+        driver,
+        score,
+        reason: driverState === originState
+          ? "Located in pickup state"
+          : dispatchRegions[driverState] === dispatchRegions[originState]
+          ? "Same regional zone"
+          : "Available for assignment"
+      };
+    })
+    .sort((a,b) => b.score - a.score);
+}
+
+function initSmartDispatch() {
+  const dispatchPage = document.querySelector("#page-dispatch");
+
+  if (!dispatchPage || typeof loads === "undefined" ||
+      typeof drivers === "undefined") return;
+
+  if (document.querySelector("#smartDispatchAssistant")) return;
+
+  const style = document.createElement("style");
+  style.textContent = SMART_DISPATCH_CSS;
+  document.head.appendChild(style);
+
+  const panel = document.createElement("article");
+  panel.className = "smart-dispatch";
+  panel.id = "smartDispatchAssistant";
+
+  panel.innerHTML = `
+    <div>
+      <div class="smart-match-label">✧ NORTHSTAR INTELLIGENCE</div>
+      <h2>Smart Dispatch Assistant</h2>
+      <p>Find the best available driver for your next shipment.</p>
+    </div>
+
+    <div class="smart-dispatch-controls">
+      <select id="smartLoadSelect">
+        <option value="">Select a pending load</option>
+      </select>
+      <button class="smart-dispatch-btn" id="findDriversBtn">
+        ✧ Find best drivers
+      </button>
+    </div>
+
+    <div id="smartMatchResults">
+      <div class="smart-empty">
+        Select a load and click Find best drivers to see recommendations.
+      </div>
+    </div>
+
+    <div class="smart-dispatch-note">
+      DEMO MODE · Recommendations use sample driver locations and
+      availability. They do not use live GPS, hours-of-service,
+      or real-time traffic data.
+    </div>
+  `;
+
+  const grid = dispatchPage.querySelector(".dispatch-grid");
+
+  if (grid) {
+    grid.insertAdjacentElement("afterend", panel);
+  } else {
+    dispatchPage.appendChild(panel);
+  }
+
+  renderSmartLoadOptions();
+
+  $("#findDriversBtn")?.addEventListener("click", renderSmartMatches);
+
+  $("#smartLoadSelect")?.addEventListener("change", renderSmartMatches);
+
+  $("#smartMatchResults")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-smart-assign]");
+    if (!button) return;
+
+    assignSmartDriver(
+      button.dataset.smartAssign,
+      button.dataset.loadId
+    );
+  });
+}
+
+function renderSmartLoadOptions() {
+  const select = $("#smartLoadSelect");
+  if (!select) return;
+
+  const previous = select.value;
+
+  const pending = loads.filter(load =>
+    ["Pending","Delayed"].includes(load.status)
+  );
+
+  select.innerHTML = `
+    <option value="">Select a load</option>
+    ${pending.map(load => `
+      <option value="${escapeHTML(load.id)}">
+        ${escapeHTML(load.id)} ·
+        ${escapeHTML(load.origin)} → ${escapeHTML(load.destination)}
+      </option>
+    `).join("")}
+  `;
+
+  if (pending.some(load => load.id === previous)) {
+    select.value = previous;
+  } else if (pending.length) {
+    select.value = pending[0].id;
+  }
+}
+
+function renderSmartMatches() {
+  const loadId = $("#smartLoadSelect")?.value;
+  const result = $("#smartMatchResults");
+
+  if (!result) return;
+
+  const load = loads.find(item => item.id === loadId);
+
+  if (!load) {
+    result.innerHTML = `
+      <div class="smart-empty">No pending loads available.</div>
+    `;
+    return;
+  }
+
+  const candidates = getDispatchCandidates(load);
+
+  if (!candidates.length) {
+    result.innerHTML = `
+      <div class="smart-empty">
+        No available drivers found. Check your fleet assignments.
+      </div>
+    `;
+    return;
+  }
+
+  result.innerHTML = `
+    <p>Recommended drivers for
+      <b>${escapeHTML(load.id)}</b>
+      · ${escapeHTML(load.origin)}
+      → ${escapeHTML(load.destination)}
+    </p>
+
+    <div class="smart-driver-grid">
+      ${candidates.slice(0,3).map((candidate,index) => `
+        <div class="smart-driver-card ${index===0 ? "best" : ""}">
+          ${index===0
+            ? '<div class="smart-match-label">✧ TOP RECOMMENDATION</div>'
+            : '<div class="smart-match-label">AVAILABLE DRIVER</div>'}
+
+          <div class="smart-driver-name">
+            ${escapeHTML(candidate.driver[0])}
+          </div>
+
+          <div class="smart-driver-meta">
+            Unit: ${escapeHTML(candidate.driver[1])}<br>
+            Location: ${escapeHTML(candidate.driver[2])}<br>
+            Availability: ${escapeHTML(candidate.driver[5])}<br>
+            Match reason: ${escapeHTML(candidate.reason)}
+          </div>
+
+          <div class="smart-score">${candidate.score}%</div>
+
+          <button class="smart-assign"
+            data-smart-assign="${escapeHTML(candidate.driver[0])}"
+            data-load-id="${escapeHTML(load.id)}">
+            Assign driver →
+          </button>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function assignSmartDriver(driverName, loadId) {
+  const load = loads.find(item => item.id === loadId);
+
+  const driver = drivers.find(item => item[0] === driverName);
+
+  if (!load || !driver) {
+    toast("Load or driver not found.");
+    return;
+  }
+
+  if (!["Pending","Delayed"].includes(load.status)) {
+    toast("This load is no longer waiting for assignment.");
+    return;
+  }
+
+  const busy = loads.some(item =>
+    item.id !== load.id &&
+    item.driver === driverName &&
+    ["Pending","In Transit","Delayed"].includes(item.status)
+  );
+
+  if (driver[5] !== "Available" || busy) {
+    toast("This driver is no longer available.");
+    return;
+  }
+
+  const confirmed = confirm(
+    `Assign ${driverName} to ${load.id}?\n\n` +
+    `${load.origin} → ${load.destination}`
+  );
+
+  if (!confirmed) return;
+
+  load.driver = driverName;
+  load.status = "In Transit";
+
+  driver[3] = load.id;
+  driver[5] = "On route";
+
+  /* Persist the sample driver assignment */
+  try {
+    localStorage.setItem(
+      "northstar_driver_assignments",
+      JSON.stringify(drivers)
+    );
+  } catch (error) {
+    console.warn("Driver assignment storage unavailable.", error);
+  }
+
+  if (typeof saveData === "function") saveData();
+
+  if (typeof refreshAll === "function") refreshAll();
+
+  if (typeof renderDrivers === "function") renderDrivers();
+
+  renderSmartLoadOptions();
+  renderSmartMatches();
+
+  toast(`Successfully assigned ${driverName} to ${load.id}.`);
+}
+
+/* Restore saved driver assignments */
+function restoreSmartDrivers() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem("northstar_driver_assignments") || "null"
+    );
+
+    if (!Array.isArray(saved)) return;
+
+    saved.forEach(savedDriver => {
+      const driver = drivers.find(item => item[0] === savedDriver[0]);
+
+      if (driver) {
+        driver[3] = savedDriver[3];
+        driver[5] = savedDriver[5];
+      }
+    });
+  } catch (error) {
+    console.warn("Could not restore driver assignments.", error);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  restoreSmartDrivers();
+  initSmartDispatch();
+});
