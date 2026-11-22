@@ -2776,3 +2776,868 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("Northstar Fleet Tracking initialized.");
 });
 
+/* =========================================
+   PHASE 5 — ROUTE INTELLIGENCE
+   Road routing, distance, ETA and delays
+   ========================================= */
+
+const ROUTE_CSS = `
+.route-module {
+  display:grid;
+  gap:16px;
+  margin-top:20px;
+}
+.route-stats {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.route-stat {
+  background:#111925;
+  border:1px solid #263449;
+  border-radius:9px;
+  padding:15px;
+}
+.route-stat span {
+  display:block;
+  font-size:10px;
+  color:#899bb0;
+}
+.route-stat strong {
+  display:block;
+  font-size:24px;
+  margin-top:8px;
+}
+.route-layout {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 300px;
+  gap:14px;
+}
+.route-map-card,
+.route-list-card {
+  background:#111925;
+  border:1px solid #263449;
+  border-radius:10px;
+  overflow:hidden;
+}
+#northstarRouteMap {
+  width:100%;
+  height:480px;
+  background:#101a28;
+}
+.route-head {
+  padding:16px;
+  border-bottom:1px solid #263449;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.route-head h2 {
+  margin:0;
+  font-size:14px;
+}
+.route-head p {
+  margin:5px 0 0;
+  font-size:10px;
+  color:#899bb0;
+}
+.route-list {
+  max-height:480px;
+  overflow:auto;
+}
+.route-item {
+  padding:14px;
+  border-bottom:1px solid #263449;
+  cursor:pointer;
+}
+.route-item:hover,
+.route-item.selected {
+  background:#1b2940;
+}
+.route-item b {
+  font-size:11px;
+}
+.route-item small {
+  display:block;
+  color:#91a2b7;
+  font-size:10px;
+  margin-top:6px;
+}
+.route-details {
+  background:#0c1623;
+  border:1px solid #29394f;
+  border-radius:9px;
+  padding:17px;
+}
+.route-details-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin-top:16px;
+}
+.route-detail-box {
+  background:#111d2c;
+  padding:13px;
+  border-radius:7px;
+}
+.route-detail-box span {
+  display:block;
+  color:#91a2b7;
+  font-size:10px;
+}
+.route-detail-box strong {
+  display:block;
+  font-size:17px;
+  margin-top:6px;
+}
+.route-line-info {
+  margin-top:14px;
+  padding:13px;
+  border-radius:8px;
+  background:#17243a;
+  color:#b8c6da;
+  font-size:11px;
+  line-height:1.7;
+}
+.route-empty {
+  padding:20px;
+  color:#91a2b7;
+  font-size:11px;
+}
+.route-action {
+  padding:9px 13px;
+  border:1px solid #34445a;
+  border-radius:6px;
+  background:#172335;
+  color:#e8eef8;
+  cursor:pointer;
+}
+.route-action:hover {
+  background:#26364d;
+}
+.route-legend {
+  display:flex;
+  flex-wrap:wrap;
+  gap:14px;
+  padding:12px 16px;
+  color:#91a2b7;
+  font-size:10px;
+}
+.route-legend span::before {
+  content:"";
+  display:inline-block;
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  margin-right:6px;
+  background:#8060e8;
+}
+@media(max-width:900px) {
+  .route-layout {grid-template-columns:1fr}
+  .route-list {max-height:260px}
+}
+@media(max-width:600px) {
+  .route-stats {grid-template-columns:repeat(2,minmax(0,1fr))}
+  #northstarRouteMap {height:360px}
+}
+`;
+
+const routeStyle = document.createElement("style");
+routeStyle.textContent = ROUTE_CSS;
+document.head.appendChild(routeStyle);
+
+/* ---------- ROUTE STATE ---------- */
+
+let routeMap = null;
+let routeLayer = null;
+let routeMarkers = [];
+let selectedRouteId = null;
+let routeRequestId = 0;
+
+const routeCache = new Map();
+
+/* ---------- ROUTE HELPERS ---------- */
+
+function getRouteLoads() {
+  return loads.filter(load =>
+    load.origin && load.destination
+  );
+}
+
+function routeFormatDistance(meters) {
+  return (meters / 1609.344).toLocaleString("en-US", {
+    maximumFractionDigits:1
+  }) + " mi";
+}
+
+function routeFormatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+
+  if (hours === 0) return minutes + " min";
+
+  return hours + "h " + minutes + "m";
+}
+
+function routeETA(seconds) {
+  const arrival = new Date(Date.now() + seconds * 1000);
+
+  return arrival.toLocaleString("en-US", {
+    weekday:"short",
+    month:"short",
+    day:"numeric",
+    hour:"numeric",
+    minute:"2-digit"
+  });
+}
+
+function getRouteStatus(load, seconds) {
+  if (load.status === "Delivered") return "Delivered";
+
+  if (load.status === "Delayed") return "Delayed";
+
+  if (load.delivery) {
+    const deadline = new Date(load.delivery + "T23:59:59");
+    const estimatedArrival = Date.now() + seconds * 1000;
+
+    if (estimatedArrival > deadline.getTime()) {
+      return "At Risk";
+    }
+  }
+
+  return load.status === "In Transit"
+    ? "In Transit"
+    : "Planned";
+}
+
+function routeStatusHTML(status) {
+  const styles = {
+    "Delivered":"#173b32",
+    "In Transit":"#25214b",
+    "Delayed":"#493322",
+    "At Risk":"#493322",
+    "Planned":"#1e354c"
+  };
+
+  const colors = {
+    "Delivered":"#67d8ad",
+    "In Transit":"#b9a8ff",
+    "Delayed":"#ffc083",
+    "At Risk":"#ffc083",
+    "Planned":"#8fc8ff"
+  };
+
+  return `
+    <span style="
+      display:inline-block;
+      padding:5px 9px;
+      border-radius:20px;
+      background:${styles[status] || "#263449"};
+      color:${colors[status] || "#dce5f1"};
+      font-size:9px;
+      white-space:nowrap">
+      ${escapeHTML(status)}
+    </span>
+  `;
+}
+
+/* ---------- PAGE CREATION ---------- */
+
+function createRoutePage() {
+  if ($("#page-routes")) return;
+
+  const nav = document.querySelector(".sidebar .nav");
+
+  if (nav && !nav.querySelector('[data-page="routes"]')) {
+    const link = document.createElement("a");
+
+    link.className = "nav-link";
+    link.href = "#routes";
+    link.dataset.page = "routes";
+
+    link.innerHTML = `
+      <span class="nav-icon">⌁</span>
+      Route Intelligence
+    `;
+
+    const trackingLink = nav.querySelector(
+      '[data-page="tracking"]'
+    );
+
+    if (trackingLink) {
+      trackingLink.insertAdjacentElement("afterend", link);
+    } else {
+      nav.appendChild(link);
+    }
+
+    link.addEventListener("click", event => {
+      event.preventDefault();
+      location.hash = "routes";
+      showPage("routes");
+      activateRoutePage();
+    });
+  }
+
+  const page = document.createElement("section");
+
+  page.className = "page";
+  page.id = "page-routes";
+
+  page.innerHTML = `
+    <div class="page-heading">
+      <div>
+        <div class="eyebrow">OPERATIONS / ROUTE INTELLIGENCE</div>
+        <h1>Route Intelligence</h1>
+        <p>Road routing, distance calculation and delivery estimates.</p>
+      </div>
+      <div class="heading-actions">
+        <span class="status-pill status-pending">
+          ROUTING ENGINE
+        </span>
+      </div>
+    </div>
+
+    <div class="route-module">
+
+      <div class="route-stats" id="routeStats"></div>
+
+      <div class="route-layout">
+
+        <article class="route-map-card">
+
+          <div class="route-head">
+            <div>
+              <h2>US Route Map</h2>
+              <p>Real road geometry · OpenStreetMap</p>
+            </div>
+
+            <button class="route-action" id="routeResetMap">
+              ⌖ Reset map
+            </button>
+          </div>
+
+          <div id="northstarRouteMap"></div>
+
+          <div class="route-legend">
+            <span>Selected route</span>
+          </div>
+
+        </article>
+
+        <article class="route-list-card">
+
+          <div class="route-head">
+            <div>
+              <h2>Shipment routes</h2>
+              <p id="routeCount">0 shipments</p>
+            </div>
+          </div>
+
+          <div class="route-list" id="routeList"></div>
+
+        </article>
+
+      </div>
+
+      <article class="route-list-card">
+
+        <div class="route-head">
+          <div>
+            <h2>Route analysis</h2>
+            <p>Distance, estimated arrival and delivery status</p>
+          </div>
+        </div>
+
+        <div id="routeDetails" style="padding:16px">
+          <div class="route-empty">
+            Select a shipment to calculate its route.
+          </div>
+        </div>
+
+      </article>
+
+      <div class="tracking-disclaimer">
+        ROUTING ENGINE — Road distances and durations are obtained
+        from the public OSRM routing service using OpenStreetMap data.
+        ETA is a route estimate, not live traffic prediction.
+        Vehicle GPS positions and actual departure times are not
+        connected to this module. Sample and estimated data must
+        not be treated as operational dispatch instructions.
+      </div>
+
+    </div>
+
+    <footer>
+      © 2026 Northstar Logistics Intelligence
+      <span>Route Intelligence · Phase 5</span>
+    </footer>
+  `;
+
+  const main = document.querySelector(".main");
+
+  const trackingPage = $("#page-tracking");
+
+  if (trackingPage) {
+    trackingPage.insertAdjacentElement("afterend", page);
+  } else {
+    main.appendChild(page);
+  }
+
+  $("#routeResetMap").addEventListener("click", () => {
+    if (routeMap) {
+      routeMap.setView([39.5,-98.35], 4);
+    }
+  });
+
+  renderRouteStats();
+  renderRouteList();
+}
+
+/* ---------- ROUTE MAP ---------- */
+
+async function activateRoutePage() {
+  if (!$("#page-routes")) return;
+
+  try {
+    await loadTrackingMapLibrary();
+
+    if (!routeMap) {
+      routeMap = L.map("northstarRouteMap")
+        .setView([39.5,-98.35],4);
+
+      L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          attribution:
+            '&copy; OpenStreetMap contributors',
+          maxZoom:19
+        }
+      ).addTo(routeMap);
+    }
+
+    setTimeout(() => {
+      routeMap.invalidateSize();
+
+      if (selectedRouteId) {
+        selectRoute(selectedRouteId);
+      }
+    },200);
+
+  } catch (error) {
+    console.error("Route map error:",error);
+
+    $("#northstarRouteMap").innerHTML = `
+      <div class="route-empty">
+        Unable to load the route map. Check your connection.
+      </div>
+    `;
+  }
+}
+
+/* ---------- ROUTE STATS ---------- */
+
+function renderRouteStats() {
+  const target = $("#routeStats");
+  if (!target) return;
+
+  const all = getRouteLoads();
+
+  const active = all.filter(load =>
+    ["In Transit","Pending"].includes(load.status)
+  ).length;
+
+  const delayed = all.filter(load =>
+    load.status === "Delayed"
+  ).length;
+
+  const delivered = all.filter(load =>
+    load.status === "Delivered"
+  ).length;
+
+  target.innerHTML = `
+    <div class="route-stat">
+      <span>Total shipments</span>
+      <strong>${all.length}</strong>
+    </div>
+
+    <div class="route-stat">
+      <span>Active routes</span>
+      <strong style="color:#a993ff">${active}</strong>
+    </div>
+
+    <div class="route-stat">
+      <span>Delayed shipments</span>
+      <strong style="color:#f0b36f">${delayed}</strong>
+    </div>
+
+    <div class="route-stat">
+      <span>Delivered</span>
+      <strong style="color:#4ed5a5">${delivered}</strong>
+    </div>
+  `;
+}
+
+/* ---------- ROUTE LIST ---------- */
+
+function renderRouteList() {
+  const list = $("#routeList");
+  if (!list) return;
+
+  const all = getRouteLoads();
+
+  $("#routeCount").textContent =
+    all.length + " shipments";
+
+  list.innerHTML = all.map(load => `
+    <div class="route-item ${
+      selectedRouteId === load.id ? "selected" : ""
+    }" data-route-id="${escapeHTML(load.id)}">
+
+      <div style="
+        display:flex;
+        justify-content:space-between;
+        gap:8px;
+        align-items:center">
+
+        <b>${escapeHTML(load.id)}</b>
+
+        ${statusTag(load.status)}
+      </div>
+
+      <small>
+        ${escapeHTML(load.origin)}
+      </small>
+
+      <small>
+        ↓ ${escapeHTML(load.destination)}
+      </small>
+
+      <small>
+        Driver: ${escapeHTML(load.driver)}
+      </small>
+
+    </div>
+  `).join("") || `
+    <div class="route-empty">
+      No shipments available.
+    </div>
+  `;
+
+  list.querySelectorAll("[data-route-id]").forEach(item => {
+    item.addEventListener("click", () => {
+      selectRoute(item.dataset.routeId);
+    });
+  });
+}
+
+/* ---------- ROUTE CALCULATION ---------- */
+
+async function calculateRoadRoute(load) {
+  const start = trackingCoordinates(load.origin);
+  const end = trackingCoordinates(load.destination);
+
+  const coordinates =
+    `${start[1]},${start[0]};${end[1]},${end[0]}`;
+
+  const url =
+    `https://router.project-osrm.org/route/v1/driving/${coordinates}` +
+    `?overview=full&geometries=geojson&steps=false`;
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error("Routing service unavailable.");
+  }
+
+  const data = await response.json();
+
+  if (
+    data.code !== "Ok" ||
+    !data.routes ||
+    !data.routes.length
+  ) {
+    throw new Error("No road route found.");
+  }
+
+  return {
+    distance:data.routes[0].distance,
+    duration:data.routes[0].duration,
+    geometry:data.routes[0].geometry,
+    start,
+    end
+  };
+}
+
+/* ---------- SELECT ROUTE ---------- */
+
+async function selectRoute(id) {
+  const load = loads.find(item => item.id === id);
+
+  if (!load) return;
+
+  selectedRouteId = id;
+
+  const requestId = ++routeRequestId;
+
+  renderRouteList();
+
+  const details = $("#routeDetails");
+
+  if (!details) return;
+
+  details.innerHTML = `
+    <div class="route-empty">
+      <b>Calculating road route...</b>
+      <p>Please wait while the routing engine responds.</p>
+    </div>
+  `;
+
+  try {
+    let route = routeCache.get(id);
+
+    if (!route) {
+      route = await calculateRoadRoute(load);
+      routeCache.set(id,route);
+    }
+
+    if (requestId !== routeRequestId) return;
+
+    renderRouteDetails(load,route);
+    renderRouteOnMap(load,route);
+
+  } catch (error) {
+    if (requestId !== routeRequestId) return;
+
+    console.error("Route calculation failed:",error);
+
+    details.innerHTML = `
+      <div class="route-empty">
+        <b>Unable to calculate this route.</b>
+        <p>
+          The routing service may be temporarily unavailable,
+          or the selected locations may need better coordinates.
+        </p>
+        <button class="route-action" id="routeRetry">
+          Try again
+        </button>
+      </div>
+    `;
+
+    $("#routeRetry")?.addEventListener("click", () => {
+      routeCache.delete(id);
+      selectRoute(id);
+    });
+  }
+}
+
+/* ---------- ROUTE DETAILS ---------- */
+
+function renderRouteDetails(load,route) {
+  const target = $("#routeDetails");
+  if (!target) return;
+
+  const distance = routeFormatDistance(route.distance);
+  const duration = routeFormatDuration(route.duration);
+  const eta = routeETA(route.duration);
+
+  const status = getRouteStatus(load,route.duration);
+
+  const originKnown = !!trackingCities[load.origin];
+  const destinationKnown = !!trackingCities[load.destination];
+
+  target.innerHTML = `
+    <div style="
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      flex-wrap:wrap;
+      gap:10px">
+
+      <div>
+        <b style="font-size:15px">
+          ${escapeHTML(load.id)}
+        </b>
+        <p style="color:#91a2b7;font-size:11px;margin-top:5px">
+          ${escapeHTML(load.origin)}
+          → ${escapeHTML(load.destination)}
+        </p>
+      </div>
+
+      ${routeStatusHTML(status)}
+
+    </div>
+
+    <div class="route-details-grid">
+
+      <div class="route-detail-box">
+        <span>Road distance</span>
+        <strong>${distance}</strong>
+      </div>
+
+      <div class="route-detail-box">
+        <span>Estimated driving time</span>
+        <strong>${duration}</strong>
+      </div>
+
+      <div class="route-detail-box">
+        <span>Estimated arrival</span>
+        <strong style="font-size:14px">
+          ${eta}
+        </strong>
+      </div>
+
+      <div class="route-detail-box">
+        <span>Scheduled delivery</span>
+        <strong style="font-size:14px">
+          ${formatDate(load.delivery)}
+        </strong>
+      </div>
+
+    </div>
+
+    <div class="route-line-info">
+
+      <b>ROUTE INFORMATION</b><br>
+
+      Origin: ${escapeHTML(load.origin)}<br>
+      Destination: ${escapeHTML(load.destination)}<br>
+      Driver: ${escapeHTML(load.driver)}<br>
+      Load value: ${money(load.rate)}<br>
+
+      Coordinate quality:
+      ${originKnown && destinationKnown
+        ? "Known demo city coordinates"
+        : "One or more approximate state-center coordinates"}
+
+      <br><br>
+
+      ETA is calculated from the current time using the
+      full origin-to-destination road duration. It does not
+      account for the truck's actual progress, rest breaks,
+      traffic or hours-of-service restrictions.
+
+    </div>
+  `;
+}
+
+/* ---------- DRAW ROUTE ---------- */
+
+function renderRouteOnMap(load,route) {
+  if (!routeMap) return;
+
+  if (routeLayer) {
+    routeMap.removeLayer(routeLayer);
+  }
+
+  routeMarkers.forEach(marker => routeMap.removeLayer(marker));
+  routeMarkers = [];
+
+  routeLayer = L.geoJSON(route.geometry,{
+    style:{
+      color:"#9679f0",
+      weight:5,
+      opacity:0.9
+    }
+  }).addTo(routeMap);
+
+  const originMarker = L.marker(route.start)
+    .addTo(routeMap)
+    .bindPopup(`
+      <b>Origin</b><br>
+      ${escapeHTML(load.origin)}
+    `);
+
+  const destinationMarker = L.marker(route.end)
+    .addTo(routeMap)
+    .bindPopup(`
+      <b>Destination</b><br>
+      ${escapeHTML(load.destination)}
+    `);
+
+  routeMarkers.push(originMarker,destinationMarker);
+
+  routeMap.fitBounds(
+    routeLayer.getBounds(),
+    {padding:[35,35]}
+  );
+
+  originMarker.openPopup();
+}
+
+/* ---------- KEEP ROUTES IN SYNC ---------- */
+
+function refreshRouteIntelligence() {
+  renderRouteStats();
+  renderRouteList();
+
+  const selected = loads.find(
+    load => load.id === selectedRouteId
+  );
+
+  if (!selected && getRouteLoads().length) {
+    selectedRouteId = getRouteLoads()[0].id;
+  }
+
+  if (!getRouteLoads().length) {
+    selectedRouteId = null;
+
+    if ($("#routeDetails")) {
+      $("#routeDetails").innerHTML =
+        '<div class="route-empty">No shipments available.</div>';
+    }
+  }
+
+  if ($("#page-routes")?.classList.contains("active-page")) {
+    if (selectedRouteId) selectRoute(selectedRouteId);
+  }
+}
+
+/* ---------- INITIALIZATION ---------- */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  createRoutePage();
+
+  /* Add Route Intelligence to page navigation */
+  const originalShowPage = showPage;
+
+  showPage = function(name) {
+    originalShowPage(name);
+
+    if (name === "routes" && $("#breadcrumbPage")) {
+      $("#breadcrumbPage").textContent = "Route Intelligence";
+    }
+  };
+
+  window.addEventListener("hashchange", () => {
+    if (location.hash === "#routes") {
+      showPage("routes");
+      activateRoutePage();
+
+      if (!selectedRouteId && getRouteLoads().length) {
+        selectRoute(getRouteLoads()[0].id);
+      }
+    }
+  });
+
+  if (location.hash === "#routes") {
+    showPage("routes");
+    activateRoutePage();
+  }
+
+  /* Connect route data to existing load updates */
+  const originalRefreshAll = refreshAll;
+
+  refreshAll = function() {
+    originalRefreshAll();
+    refreshRouteIntelligence();
+  };
+
+  renderRouteStats();
+  renderRouteList();
+
+  console.log("Northstar Route Intelligence initialized.");
+});
+
