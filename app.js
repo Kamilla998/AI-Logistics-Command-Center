@@ -1137,3 +1137,929 @@ document.addEventListener("DOMContentLoaded", () => {
   restoreSmartDrivers();
   initSmartDispatch();
 });
+
+/* =========================================
+   PHASE 3 — FLEET MANAGEMENT
+   Drivers, Trucks, Status & Assignments
+   ========================================= */
+
+const FLEET_STORAGE = "northstar_fleet_v1";
+
+const initialTrucks = [
+  {id:"TR-104",model:"Freightliner Cascadia",plate:"TX-4812",type:"Semi Truck",status:"On Route",location:"Dallas, TX",driver:"Marcus Johnson"},
+  {id:"TR-087",model:"Volvo VNL 760",plate:"GA-2291",type:"Semi Truck",status:"Available",location:"Atlanta, GA",driver:""},
+  {id:"TR-112",model:"Peterbilt 579",plate:"TX-7734",type:"Semi Truck",status:"On Route",location:"El Paso, TX",driver:"David Chen"},
+  {id:"TR-063",model:"Kenworth T680",plate:"NY-9082",type:"Semi Truck",status:"Maintenance",location:"New York, NY",driver:"James Miller"},
+  {id:"TR-091",model:"International LT",plate:"FL-4410",type:"Semi Truck",status:"Available",location:"Orlando, FL",driver:""},
+  {id:"TR-125",model:"Freightliner Cascadia",plate:"CO-5521",type:"Semi Truck",status:"Available",location:"Denver, CO",driver:""}
+];
+
+let trucks = [...initialTrucks];
+
+let fleetMeta = {};
+
+function loadFleetStorage() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(FLEET_STORAGE) || "null"
+    );
+
+    if (!saved) return;
+
+    if (Array.isArray(saved.trucks)) {
+      trucks = saved.trucks;
+    }
+
+    if (saved.meta && typeof saved.meta === "object") {
+      fleetMeta = saved.meta;
+    }
+
+    if (Array.isArray(saved.drivers)) {
+      saved.drivers.forEach(savedDriver => {
+        const existing = drivers.find(
+          driver => driver[0] === savedDriver[0]
+        );
+
+        if (existing) {
+          Object.assign(existing, savedDriver);
+        } else {
+          drivers.push(savedDriver);
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Fleet storage error:", error);
+  }
+}
+
+function saveFleetStorage() {
+  try {
+    localStorage.setItem(FLEET_STORAGE, JSON.stringify({
+      trucks,
+      drivers,
+      meta:fleetMeta
+    }));
+  } catch (error) {
+    console.error("Fleet save error:", error);
+    toast("Could not save fleet data.");
+  }
+}
+
+/* ---------- FLEET STYLES ---------- */
+
+const fleetStyle = document.createElement("style");
+
+fleetStyle.textContent = `
+.fleet-module {
+  margin-top:20px;
+  display:grid;
+  gap:16px;
+}
+.fleet-toolbar {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.fleet-toolbar h2 {
+  font:700 15px Manrope,sans-serif;
+  margin:0 0 5px;
+}
+.fleet-toolbar p {
+  color:#8491a4;
+  font-size:10px;
+  margin:0;
+}
+.fleet-actions {
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.fleet-action-btn {
+  padding:9px 13px;
+  border-radius:6px;
+  border:1px solid #34445a;
+  background:#172335;
+  color:#e8eef8;
+  cursor:pointer;
+  font-size:11px;
+}
+.fleet-action-btn.primary {
+  background:#8060e8;
+  border-color:#8060e8;
+  color:white;
+}
+.fleet-action-btn:hover {
+  filter:brightness(1.15);
+}
+.fleet-stats {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.fleet-stat {
+  background:#111925;
+  border:1px solid #202c3b;
+  border-radius:9px;
+  padding:15px;
+}
+.fleet-stat span {
+  display:block;
+  color:#8b9bb0;
+  font-size:10px;
+}
+.fleet-stat strong {
+  display:block;
+  font:700 23px Manrope,sans-serif;
+  margin-top:8px;
+}
+.fleet-table-wrap {
+  overflow-x:auto;
+}
+.fleet-table {
+  width:100%;
+  border-collapse:collapse;
+  min-width:650px;
+}
+.fleet-table th {
+  color:#7e8da2;
+  font-size:9px;
+  text-align:left;
+  padding:12px 10px;
+  border-bottom:1px solid #293649;
+  white-space:nowrap;
+}
+.fleet-table td {
+  padding:13px 10px;
+  border-bottom:1px solid #202c3b;
+  font-size:11px;
+  color:#c7d1df;
+}
+.fleet-table tr:last-child td {
+  border-bottom:0;
+}
+.fleet-table select {
+  background:#101b29;
+  color:#dce5f1;
+  border:1px solid #34445a;
+  border-radius:5px;
+  padding:6px;
+  max-width:135px;
+  font-size:10px;
+}
+.fleet-edit {
+  border:1px solid #35445b;
+  background:#192638;
+  color:#d8e3f3;
+  border-radius:5px;
+  padding:6px 9px;
+  cursor:pointer;
+}
+.fleet-status {
+  display:inline-block;
+  border-radius:20px;
+  padding:5px 8px;
+  font-size:9px;
+  white-space:nowrap;
+}
+.fleet-available {background:#173b32;color:#67d8ad}
+.fleet-route {background:#25214b;color:#b9a8ff}
+.fleet-maintenance {background:#493322;color:#ffc083}
+.fleet-offline {background:#3b2930;color:#ed9aa4}
+.fleet-assigned {background:#1e354c;color:#8fc8ff}
+.fleet-modal {
+  position:fixed;
+  inset:0;
+  background:#000b;
+  z-index:100;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:15px;
+}
+.fleet-modal.show {display:flex}
+.fleet-modal-card {
+  background:#111b29;
+  border:1px solid #34445a;
+  border-radius:12px;
+  width:min(480px,100%);
+  max-height:90vh;
+  overflow:auto;
+  padding:22px;
+}
+.fleet-modal-card h2 {
+  margin:0 0 18px;
+  font:700 18px Manrope,sans-serif;
+}
+.fleet-form {
+  display:grid;
+  gap:12px;
+}
+.fleet-form label {
+  display:grid;
+  gap:6px;
+  color:#9aaabd;
+  font-size:11px;
+}
+.fleet-form input,
+.fleet-form select {
+  width:100%;
+  padding:11px;
+  background:#0b1420;
+  color:#edf2f8;
+  border:1px solid #34445a;
+  border-radius:6px;
+}
+.fleet-form-buttons {
+  display:flex;
+  justify-content:flex-end;
+  gap:9px;
+  margin-top:8px;
+}
+.fleet-empty {
+  color:#8b9bb0;
+  padding:22px;
+  text-align:center;
+}
+@media(max-width:700px) {
+  .fleet-stats {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+`;
+
+document.head.appendChild(fleetStyle);
+
+/* ---------- STATUS HELPERS ---------- */
+
+function fleetStatusClass(status) {
+  return {
+    "Available":"fleet-available",
+    "On Route":"fleet-route",
+    "Maintenance":"fleet-maintenance",
+    "Offline":"fleet-offline",
+    "Assigned":"fleet-assigned"
+  }[status] || "fleet-offline";
+}
+
+function fleetStatus(status) {
+  return `<span class="fleet-status ${fleetStatusClass(status)}">${escapeHTML(status)}</span>`;
+}
+
+/* ---------- DRIVER DATA ---------- */
+
+function getDriverMeta(name) {
+  if (!fleetMeta[name]) {
+    fleetMeta[name] = {
+      phone:"",
+      email:"",
+      cdl:"",
+      cdlExpiry:"",
+      notes:""
+    };
+  }
+
+  return fleetMeta[name];
+}
+
+function getDriverStatus(driver) {
+  return driver[5] || "Available";
+}
+
+function getDriverTruck(name) {
+  return trucks.find(truck => truck.driver === name);
+}
+
+/* ---------- FLEET UI ---------- */
+
+function initFleetModule() {
+  const page = $("#page-fleet");
+
+  if (!page || $("#fleetModule")) return;
+
+  const module = document.createElement("div");
+  module.className = "fleet-module";
+  module.id = "fleetModule";
+
+  module.innerHTML = `
+    <div class="fleet-stats" id="fleetStats"></div>
+
+    <article class="panel">
+      <div class="fleet-toolbar">
+        <div>
+          <h2>Fleet equipment</h2>
+          <p>Manage trucks, equipment and vehicle availability.</p>
+        </div>
+        <div class="fleet-actions">
+          <button class="fleet-action-btn primary" id="fleetAddTruck">
+            ＋ Add truck
+          </button>
+        </div>
+      </div>
+
+      <div class="fleet-table-wrap" style="margin-top:14px">
+        <table class="fleet-table">
+          <thead>
+            <tr>
+              <th>UNIT</th>
+              <th>VEHICLE</th>
+              <th>PLATE</th>
+              <th>LOCATION</th>
+              <th>DRIVER</th>
+              <th>STATUS</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="fleetTruckRows"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="fleet-toolbar">
+        <div>
+          <h2>Driver management</h2>
+          <p>Driver availability, contact information and CDL records.</p>
+        </div>
+        <div class="fleet-actions">
+          <button class="fleet-action-btn primary" id="fleetAddDriver">
+            ＋ Add driver
+          </button>
+        </div>
+      </div>
+
+      <div class="fleet-table-wrap" style="margin-top:14px">
+        <table class="fleet-table">
+          <thead>
+            <tr>
+              <th>DRIVER</th>
+              <th>UNIT</th>
+              <th>PHONE</th>
+              <th>CDL</th>
+              <th>STATUS</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="fleetDriverRows"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="fleet-toolbar">
+        <div>
+          <h2>Fleet assignments</h2>
+          <p>Current relationship between drivers, trucks and loads.</p>
+        </div>
+      </div>
+      <div class="fleet-table-wrap" style="margin-top:14px">
+        <table class="fleet-table">
+          <thead>
+            <tr>
+              <th>DRIVER</th>
+              <th>TRUCK</th>
+              <th>LOAD</th>
+              <th>DRIVER STATUS</th>
+              <th>TRUCK STATUS</th>
+            </tr>
+          </thead>
+          <tbody id="fleetAssignmentRows"></tbody>
+        </table>
+      </div>
+    </article>
+  `;
+
+  const oldDirectory = page.querySelector(".full-table");
+
+  if (oldDirectory) {
+    oldDirectory.insertAdjacentElement("afterend", module);
+  } else {
+    page.appendChild(module);
+  }
+
+  createFleetModal();
+  renderFleet();
+
+  $("#fleetAddDriver").addEventListener("click", () => {
+    openFleetForm("driver");
+  });
+
+  $("#fleetAddTruck").addEventListener("click", () => {
+    openFleetForm("truck");
+  });
+
+  module.addEventListener("click", handleFleetActions);
+  module.addEventListener("change", handleFleetChanges);
+}
+
+/* ---------- MODAL ---------- */
+
+function createFleetModal() {
+  if ($("#fleetModal")) return;
+
+  const modal = document.createElement("div");
+  modal.className = "fleet-modal";
+  modal.id = "fleetModal";
+
+  modal.innerHTML = `
+    <div class="fleet-modal-card">
+      <div class="fleet-toolbar">
+        <h2 id="fleetModalTitle">Add record</h2>
+        <button class="fleet-edit" id="fleetClose">✕</button>
+      </div>
+      <form class="fleet-form" id="fleetForm"></form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  $("#fleetClose").addEventListener("click", closeFleetForm);
+
+  modal.addEventListener("click", event => {
+    if (event.target === modal) closeFleetForm();
+  });
+
+  $("#fleetForm").addEventListener("submit", saveFleetForm);
+}
+
+let fleetFormType = "";
+let fleetEditId = null;
+
+function openFleetForm(type, id = null) {
+  fleetFormType = type;
+  fleetEditId = id;
+
+  const form = $("#fleetForm");
+  const record = type === "driver"
+    ? drivers.find(driver => driver[0] === id)
+    : trucks.find(truck => truck.id === id);
+
+  $("#fleetModalTitle").textContent =
+    (id ? "Edit " : "Add ") + (type === "driver" ? "driver" : "truck");
+
+  if (type === "driver") {
+    const name = record ? record[0] : "";
+    const meta = getDriverMeta(name);
+
+    form.innerHTML = `
+      <label>Full name
+        <input name="name" required value="${escapeHTML(record?.[0] || "")}" placeholder="John Smith">
+      </label>
+      <label>Phone number
+        <input name="phone" value="${escapeHTML(meta.phone)}" placeholder="+1 555 000 0000">
+      </label>
+      <label>Email
+        <input name="email" type="email" value="${escapeHTML(meta.email)}" placeholder="driver@example.com">
+      </label>
+      <label>CDL number
+        <input name="cdl" value="${escapeHTML(meta.cdl)}" placeholder="CDL number">
+      </label>
+      <label>CDL expiration date
+        <input name="cdlExpiry" type="date" value="${escapeHTML(meta.cdlExpiry)}">
+      </label>
+      <label>Current location
+        <input name="location" required value="${escapeHTML(record?.[2] || "")}" placeholder="Dallas, TX">
+      </label>
+      <label>Availability status
+        <select name="status">
+          ${["Available","On Route","Assigned","Maintenance","Offline"].map(status =>
+            `<option ${getDriverStatus(record || ["","","","","","Available"]) === status ? "selected" : ""}>${status}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Assigned truck
+        <select name="truck">
+          <option value="">No truck assigned</option>
+          ${trucks.map(truck => `
+            <option value="${escapeHTML(truck.id)}"
+              ${truck.driver === name ? "selected" : ""}>
+              ${escapeHTML(truck.id)} · ${escapeHTML(truck.model)}
+            </option>
+          `).join("")}
+        </select>
+      </label>
+      <label>Notes
+        <input name="notes" value="${escapeHTML(meta.notes)}" placeholder="Optional notes">
+      </label>
+      <div class="fleet-form-buttons">
+        <button type="button" class="fleet-action-btn" id="fleetCancel">Cancel</button>
+        <button type="submit" class="fleet-action-btn primary">Save driver</button>
+      </div>
+    `;
+  } else {
+    form.innerHTML = `
+      <label>Unit ID
+        <input name="id" required value="${escapeHTML(record?.id || "")}" placeholder="TR-150">
+      </label>
+      <label>Vehicle make and model
+        <input name="model" required value="${escapeHTML(record?.model || "")}" placeholder="Freightliner Cascadia">
+      </label>
+      <label>License plate
+        <input name="plate" required value="${escapeHTML(record?.plate || "")}" placeholder="TX-1234">
+      </label>
+      <label>Vehicle type
+        <select name="type">
+          ${["Semi Truck","Box Truck","Reefer","Flatbed","Dry Van","Other"].map(type =>
+            `<option ${record?.type === type ? "selected" : ""}>${type}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Current location
+        <input name="location" required value="${escapeHTML(record?.location || "")}" placeholder="Dallas, TX">
+      </label>
+      <label>Vehicle status
+        <select name="status">
+          ${["Available","On Route","Maintenance","Offline"].map(status =>
+            `<option ${record?.status === status ? "selected" : ""}>${status}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Assigned driver
+        <select name="driver">
+          <option value="">No driver assigned</option>
+          ${drivers.map(driver => `
+            <option value="${escapeHTML(driver[0])}"
+              ${record?.driver === driver[0] ? "selected" : ""}>
+              ${escapeHTML(driver[0])}
+            </option>
+          `).join("")}
+        </select>
+      </label>
+      <div class="fleet-form-buttons">
+        <button type="button" class="fleet-action-btn" id="fleetCancel">Cancel</button>
+        <button type="submit" class="fleet-action-btn primary">Save truck</button>
+      </div>
+    `;
+  }
+
+  $("#fleetCancel").addEventListener("click", closeFleetForm);
+
+  $("#fleetModal").classList.add("show");
+}
+
+function closeFleetForm() {
+  $("#fleetModal")?.classList.remove("show");
+  fleetEditId = null;
+}
+
+/* ---------- SAVE RECORDS ---------- */
+
+function saveFleetForm(event) {
+  event.preventDefault();
+
+  const data = new FormData(event.currentTarget);
+
+  if (fleetFormType === "driver") {
+    const name = String(data.get("name") || "").trim();
+    const location = String(data.get("location") || "").trim();
+
+    if (!name || !location) {
+      toast("Enter the driver name and location.");
+      return;
+    }
+
+    const existing = fleetEditId
+      ? drivers.find(driver => driver[0] === fleetEditId)
+      : null;
+
+    const oldName = existing?.[0];
+
+    const duplicate = drivers.some(driver =>
+      driver[0].toLowerCase() === name.toLowerCase() &&
+      driver !== existing
+    );
+
+    if (duplicate) {
+      toast("A driver with this name already exists.");
+      return;
+    }
+
+    const assignedTruck = String(data.get("truck") || "");
+
+    if (assignedTruck) {
+      const truck = trucks.find(item => item.id === assignedTruck);
+
+      if (!truck) {
+        toast("Selected truck not found.");
+        return;
+      }
+
+      if (truck.driver && truck.driver !== oldName) {
+        toast("This truck is already assigned.");
+        return;
+      }
+
+      if (truck.status === "Maintenance" || truck.status === "Offline") {
+        toast("This truck is not available.");
+        return;
+      }
+    }
+
+    const status = String(data.get("status"));
+
+    const driverRecord = existing || [
+      name,"—",location,"—","—",status
+    ];
+
+    driverRecord[0] = name;
+    driverRecord[2] = location;
+    driverRecord[5] = status;
+
+    if (!existing) drivers.push(driverRecord);
+
+    if (oldName && oldName !== name) {
+      loads.forEach(load => {
+        if (load.driver === oldName) load.driver = name;
+      });
+
+      trucks.forEach(truck => {
+        if (truck.driver === oldName) truck.driver = "";
+      });
+
+      if (fleetMeta[oldName]) {
+        fleetMeta[name] = fleetMeta[oldName];
+        delete fleetMeta[oldName];
+      }
+    }
+
+    fleetMeta[name] = {
+      phone:String(data.get("phone") || "").trim(),
+      email:String(data.get("email") || "").trim(),
+      cdl:String(data.get("cdl") || "").trim(),
+      cdlExpiry:String(data.get("cdlExpiry") || ""),
+      notes:String(data.get("notes") || "").trim()
+    };
+
+    trucks.forEach(truck => {
+      if (truck.driver === name && truck.id !== assignedTruck) {
+        truck.driver = "";
+      }
+    });
+
+    if (assignedTruck) {
+      const truck = trucks.find(item => item.id === assignedTruck);
+      truck.driver = name;
+      truck.status = status === "On Route" ? "On Route" : "Available";
+      driverRecord[1] = truck.id;
+    } else {
+      driverRecord[1] = "—";
+    }
+
+    toast(existing ? "Driver updated." : "Driver added.");
+  } else {
+    const id = String(data.get("id") || "").trim().toUpperCase();
+
+    if (!id) return;
+
+    const duplicate = trucks.some(truck =>
+      truck.id.toLowerCase() === id.toLowerCase() &&
+      truck.id !== fleetEditId
+    );
+
+    if (duplicate) {
+      toast("This unit ID already exists.");
+      return;
+    }
+
+    const driverName = String(data.get("driver") || "");
+
+    if (driverName) {
+      const driver = drivers.find(item => item[0] === driverName);
+
+      if (!driver) {
+        toast("Selected driver not found.");
+        return;
+      }
+
+      if (driver[5] === "Maintenance" || driver[5] === "Offline") {
+        toast("This driver is not available.");
+        return;
+      }
+
+      const otherTruck = trucks.find(item =>
+        item.driver === driverName && item.id !== fleetEditId
+      );
+
+      if (otherTruck) {
+        toast("This driver already has a truck.");
+        return;
+      }
+    }
+
+    const truckRecord = {
+      id,
+      model:String(data.get("model") || "").trim(),
+      plate:String(data.get("plate") || "").trim(),
+      type:String(data.get("type") || "Semi Truck"),
+      location:String(data.get("location") || "").trim(),
+      status:String(data.get("status") || "Available"),
+      driver:driverName
+    };
+
+    if (fleetEditId) {
+      const index = trucks.findIndex(item => item.id === fleetEditId);
+      if (index !== -1) trucks[index] = truckRecord;
+    } else {
+      trucks.push(truckRecord);
+    }
+
+    if (driverName) {
+      const driver = drivers.find(item => item[0] === driverName);
+      driver[1] = id;
+      if (truckRecord.status === "On Route") driver[5] = "On Route";
+      else if (driver[5] !== "On Route") driver[5] = "Assigned";
+    }
+
+    toast(fleetEditId ? "Truck updated." : "Truck added.");
+  }
+
+  saveFleetStorage();
+  saveData();
+  renderFleet();
+  refreshAll();
+  closeFleetForm();
+}
+
+/* ---------- STATUS CHANGES ---------- */
+
+function handleFleetChanges(event) {
+  const driverName = event.target.dataset.driverStatus;
+  const truckId = event.target.dataset.truckStatus;
+
+  if (driverName) {
+    const driver = drivers.find(item => item[0] === driverName);
+    if (!driver) return;
+
+    driver[5] = event.target.value;
+
+    const truck = getDriverTruck(driverName);
+
+    if (truck) {
+      truck.status = event.target.value === "On Route"
+        ? "On Route"
+        : event.target.value === "Maintenance" || event.target.value === "Offline"
+        ? event.target.value
+        : "Available";
+    }
+  }
+
+  if (truckId) {
+    const truck = trucks.find(item => item.id === truckId);
+    if (!truck) return;
+
+    truck.status = event.target.value;
+
+    if (truck.driver) {
+      const driver = drivers.find(item => item[0] === truck.driver);
+      if (driver) {
+        if (event.target.value === "On Route") driver[5] = "On Route";
+        if (event.target.value === "Maintenance" || event.target.value === "Offline") {
+          driver[5] = event.target.value;
+        }
+        if (event.target.value === "Available" && driver[5] !== "On Route") {
+          driver[5] = "Available";
+        }
+      }
+    }
+  }
+
+  saveFleetStorage();
+  renderFleet();
+  refreshAll();
+}
+
+/* ---------- TABLE ACTIONS ---------- */
+
+function handleFleetActions(event) {
+  const editDriver = event.target.closest("[data-edit-driver]");
+  const editTruck = event.target.closest("[data-edit-truck]");
+
+  if (editDriver) {
+    openFleetForm("driver", editDriver.dataset.editDriver);
+  }
+
+  if (editTruck) {
+    openFleetForm("truck", editTruck.dataset.editTruck);
+  }
+}
+
+/* ---------- RENDER ---------- */
+
+function renderFleet() {
+  const driverRows = $("#fleetDriverRows");
+  const truckRows = $("#fleetTruckRows");
+  const assignmentRows = $("#fleetAssignmentRows");
+
+  if (!driverRows || !truckRows || !assignmentRows) return;
+
+  const available = trucks.filter(t => t.status === "Available").length;
+  const onRoute = trucks.filter(t => t.status === "On Route").length;
+  const maintenance = trucks.filter(t => t.status === "Maintenance").length;
+  const totalDrivers = drivers.length;
+
+  $("#fleetStats").innerHTML = `
+    <div class="fleet-stat">
+      <span>Total trucks</span>
+      <strong>${trucks.length}</strong>
+    </div>
+    <div class="fleet-stat">
+      <span>Available trucks</span>
+      <strong>${available}</strong>
+    </div>
+    <div class="fleet-stat">
+      <span>On route</span>
+      <strong>${onRoute}</strong>
+    </div>
+    <div class="fleet-stat">
+      <span>Drivers registered</span>
+      <strong>${totalDrivers}</strong>
+    </div>
+  `;
+
+  truckRows.innerHTML = trucks.map(truck => `
+    <tr>
+      <td><b>${escapeHTML(truck.id)}</b></td>
+      <td>${escapeHTML(truck.model)}</td>
+      <td>${escapeHTML(truck.plate)}</td>
+      <td>${escapeHTML(truck.location)}</td>
+      <td>${escapeHTML(truck.driver || "Unassigned")}</td>
+      <td>
+        <select data-truck-status="${escapeHTML(truck.id)}">
+          ${["Available","On Route","Maintenance","Offline"].map(status =>
+            `<option ${truck.status === status ? "selected" : ""}>${status}</option>`
+          ).join("")}
+        </select>
+      </td>
+      <td>
+        <button class="fleet-edit" data-edit-truck="${escapeHTML(truck.id)}">
+          Edit
+        </button>
+      </td>
+    </tr>
+  `).join("") || `
+    <tr><td colspan="7" class="fleet-empty">No trucks registered.</td></tr>
+  `;
+
+  driverRows.innerHTML = drivers.map(driver => {
+    const meta = getDriverMeta(driver[0]);
+    const truck = getDriverTruck(driver[0]);
+
+    return `
+      <tr>
+        <td><b>${escapeHTML(driver[0])}</b></td>
+        <td>${escapeHTML(truck?.id || driver[1] || "—")}</td>
+        <td>${escapeHTML(meta.phone || "—")}</td>
+        <td>${escapeHTML(meta.cdl || "Not entered")}</td>
+        <td>
+          <select data-driver-status="${escapeHTML(driver[0])}">
+            ${["Available","On Route","Assigned","Maintenance","Offline"].map(status =>
+              `<option ${getDriverStatus(driver) === status ? "selected" : ""}>${status}</option>`
+            ).join("")}
+          </select>
+        </td>
+        <td>
+          <button class="fleet-edit" data-edit-driver="${escapeHTML(driver[0])}">
+            Edit
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("") || `
+    <tr><td colspan="6" class="fleet-empty">No drivers registered.</td></tr>
+  `;
+
+  assignmentRows.innerHTML = drivers.map(driver => {
+    const truck = getDriverTruck(driver[0]);
+    const load = loads.find(item =>
+      item.driver === driver[0] &&
+      item.status !== "Delivered"
+    );
+
+    return `
+      <tr>
+        <td><b>${escapeHTML(driver[0])}</b></td>
+        <td>${escapeHTML(truck?.id || "Unassigned")}</td>
+        <td>${escapeHTML(load?.id || "No active load")}</td>
+        <td>${fleetStatus(getDriverStatus(driver))}</td>
+        <td>${truck ? fleetStatus(truck.status) : "—"}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+/* ---------- INITIALIZE ---------- */
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadFleetStorage();
+
+  /* Remove the old demo-only Add Driver click handler */
+  const oldAddDriver = $("#addDriver");
+
+  if (oldAddDriver) {
+    const replacement = oldAddDriver.cloneNode(true);
+    oldAddDriver.replaceWith(replacement);
+  }
+
+  initFleetModule();
+
+  console.log("Northstar Fleet Management initialized.");
+});
