@@ -2063,3 +2063,720 @@ document.addEventListener("DOMContentLoaded", () => {
 
   console.log("Northstar Fleet Management initialized.");
 });
+
+/* =========================================
+   PHASE 4 — FLEET TRACKING & GPS
+   Interactive US fleet map
+   ========================================= */
+
+const TRACKING_CSS = `
+.tracking-module {
+  display:grid;
+  gap:16px;
+  margin-top:20px;
+}
+.tracking-stats {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.tracking-stat {
+  background:#111925;
+  border:1px solid #263449;
+  border-radius:9px;
+  padding:15px;
+}
+.tracking-stat span {
+  display:block;
+  font-size:10px;
+  color:#899bb0;
+}
+.tracking-stat strong {
+  display:block;
+  font-size:24px;
+  margin-top:7px;
+}
+.tracking-layout {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 285px;
+  gap:14px;
+}
+.tracking-map-card,
+.tracking-side-card {
+  background:#111925;
+  border:1px solid #263449;
+  border-radius:10px;
+  overflow:hidden;
+}
+.tracking-card-head {
+  padding:16px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  border-bottom:1px solid #263449;
+  flex-wrap:wrap;
+}
+.tracking-card-head h2 {
+  margin:0;
+  font-size:14px;
+}
+.tracking-card-head p {
+  margin:5px 0 0;
+  font-size:10px;
+  color:#899bb0;
+}
+#northstarMap {
+  height:510px;
+  width:100%;
+  background:#101a28;
+  z-index:1;
+}
+.tracking-list {
+  max-height:510px;
+  overflow:auto;
+}
+.tracking-truck {
+  padding:13px;
+  border-bottom:1px solid #253246;
+  cursor:pointer;
+}
+.tracking-truck:hover,
+.tracking-truck.selected {
+  background:#1b2940;
+}
+.tracking-truck-top {
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  align-items:center;
+}
+.tracking-truck b {
+  font-size:11px;
+}
+.tracking-truck small {
+  display:block;
+  color:#91a2b7;
+  margin-top:6px;
+  font-size:10px;
+}
+.tracking-dot {
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  display:inline-block;
+  margin-right:6px;
+}
+.tracking-search {
+  width:100%;
+  background:#0b1420;
+  color:#edf2f8;
+  border:1px solid #34445a;
+  border-radius:6px;
+  padding:10px;
+  margin:12px 0;
+  font-size:11px;
+}
+.tracking-filter {
+  background:#0b1420;
+  color:#edf2f8;
+  border:1px solid #34445a;
+  border-radius:6px;
+  padding:8px;
+  font-size:10px;
+}
+.tracking-details {
+  background:#0c1623;
+  border:1px solid #29394f;
+  border-radius:9px;
+  padding:16px;
+  margin-top:14px;
+}
+.tracking-details h3 {
+  font-size:13px;
+  margin:0 0 12px;
+}
+.tracking-detail-row {
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:8px 0;
+  border-bottom:1px solid #253246;
+  font-size:10px;
+}
+.tracking-detail-row span {
+  color:#91a2b7;
+}
+.tracking-detail-row b {
+  text-align:right;
+}
+.tracking-disclaimer {
+  color:#aebbd0;
+  background:#18243a;
+  border-radius:7px;
+  padding:12px;
+  font-size:10px;
+  line-height:1.6;
+}
+.tracking-map-marker {
+  width:32px;
+  height:32px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  border:2px solid #dce7f8;
+  border-radius:50%;
+  color:white;
+  font-size:13px;
+  font-weight:bold;
+  box-shadow:0 2px 12px #0008;
+}
+.tracking-marker-route {background:#7860df}
+.tracking-marker-available {background:#20a77b}
+.tracking-marker-maintenance {background:#c78a40}
+.tracking-marker-offline {background:#778394}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background:#111d2c;
+  color:#edf2f8;
+}
+.leaflet-popup-content {
+  font-size:11px;
+}
+.tracking-empty {
+  padding:20px;
+  color:#91a2b7;
+  font-size:11px;
+}
+@media(max-width:900px) {
+  .tracking-layout {grid-template-columns:1fr}
+  .tracking-list {max-height:260px}
+}
+@media(max-width:600px) {
+  .tracking-stats {grid-template-columns:repeat(2,minmax(0,1fr))}
+  #northstarMap {height:370px}
+}
+`;
+
+const trackingStyle = document.createElement("style");
+trackingStyle.textContent = TRACKING_CSS;
+document.head.appendChild(trackingStyle);
+
+/* Demo coordinates: approximate city locations in the USA */
+const trackingCities = {
+  "Los Angeles, CA":[34.0522,-118.2437],
+  "Dallas, TX":[32.7767,-96.7970],
+  "Chicago, IL":[41.8781,-87.6298],
+  "Atlanta, GA":[33.7490,-84.3880],
+  "Houston, TX":[29.7604,-95.3698],
+  "Phoenix, AZ":[33.4484,-112.0740],
+  "New York, NY":[40.7128,-74.0060],
+  "Boston, MA":[42.3601,-71.0589],
+  "Miami, FL":[25.7617,-80.1918],
+  "Orlando, FL":[28.5383,-81.3792],
+  "Denver, CO":[39.7392,-104.9903],
+  "Kansas City, MO":[39.0997,-94.5786],
+  "Seattle, WA":[47.6062,-122.3321],
+  "Portland, OR":[45.5152,-122.6784],
+  "Nashville, TN":[36.1627,-86.7816],
+  "Charlotte, NC":[35.2271,-80.8431],
+  "El Paso, TX":[31.7619,-106.4850]
+};
+
+let northstarMap = null;
+let trackingMarkers = {};
+let selectedTrackingTruck = null;
+let trackingFilter = "all";
+
+function trackingCoordinates(location) {
+  if (trackingCities[location]) {
+    return trackingCities[location];
+  }
+
+  const state = String(location).split(",").pop().trim();
+
+  const stateCenters = {
+    CA:[36.7783,-119.4179],
+    TX:[31.9686,-99.9018],
+    FL:[27.6648,-81.5158],
+    NY:[42.1657,-74.9481],
+    CO:[39.1130,-105.3589],
+    WA:[47.7511,-120.7401],
+    OR:[43.8041,-120.5542],
+    IL:[40.6331,-89.3985],
+    GA:[32.1656,-82.9001],
+    AZ:[34.0489,-111.0937],
+    NC:[35.7596,-79.0193],
+    MO:[37.9643,-91.8318],
+    TN:[35.5175,-86.5804],
+    MA:[42.4072,-71.3824]
+  };
+
+  return stateCenters[state] || [39.5,-98.35];
+}
+
+function trackingColor(status) {
+  return {
+    "On Route":"#8060e8",
+    "Available":"#20a77b",
+    "Maintenance":"#c78a40",
+    "Offline":"#778394"
+  }[status] || "#778394";
+}
+
+function trackingMarkerIcon(status) {
+  const className = {
+    "On Route":"tracking-marker-route",
+    "Available":"tracking-marker-available",
+    "Maintenance":"tracking-marker-maintenance",
+    "Offline":"tracking-marker-offline"
+  }[status] || "tracking-marker-offline";
+
+  return L.divIcon({
+    className:"",
+    html:`<div class="tracking-map-marker ${className}">▰</div>`,
+    iconSize:[32,32],
+    iconAnchor:[16,16]
+  });
+}
+
+/* ---------- PAGE ---------- */
+
+function createTrackingPage() {
+  if ($("#page-tracking")) return;
+
+  const nav = document.querySelector(".sidebar .nav");
+
+  if (nav && !document.querySelector('[data-page="tracking"]')) {
+    const link = document.createElement("a");
+    link.className = "nav-link";
+    link.href = "#tracking";
+    link.dataset.page = "tracking";
+    link.innerHTML = `
+      <span class="nav-icon">⌖</span>
+      Fleet Tracking
+    `;
+
+    const fleetLink = nav.querySelector('[data-page="fleet"]');
+
+    if (fleetLink) {
+      fleetLink.insertAdjacentElement("afterend", link);
+    } else {
+      nav.appendChild(link);
+    }
+
+    link.addEventListener("click", event => {
+      event.preventDefault();
+      location.hash = "tracking";
+      showPage("tracking");
+      activateTrackingPage();
+    });
+  }
+
+  const page = document.createElement("section");
+  page.className = "page";
+  page.id = "page-tracking";
+
+  page.innerHTML = `
+    <div class="page-heading">
+      <div>
+        <div class="eyebrow">OPERATIONS / FLEET INTELLIGENCE</div>
+        <h1>Fleet Tracking</h1>
+        <p>Monitor truck locations and fleet activity across the United States.</p>
+      </div>
+      <div class="heading-actions">
+        <span class="status-pill status-pending">DEMO GPS MODE</span>
+      </div>
+    </div>
+
+    <div class="tracking-module">
+      <div class="tracking-stats" id="trackingStats"></div>
+
+      <div class="tracking-layout">
+        <article class="tracking-map-card">
+          <div class="tracking-card-head">
+            <div>
+              <h2>US Fleet Map</h2>
+              <p>Vehicle positions based on demo city coordinates</p>
+            </div>
+            <button class="fleet-action-btn" id="trackingResetMap">
+              ⌖ Reset map
+            </button>
+          </div>
+          <div id="northstarMap"></div>
+        </article>
+
+        <article class="tracking-side-card">
+          <div class="tracking-card-head">
+            <div>
+              <h2>Fleet vehicles</h2>
+              <p id="trackingVehicleCount">0 vehicles</p>
+            </div>
+          </div>
+
+          <div style="padding:0 12px">
+            <input
+              class="tracking-search"
+              id="trackingSearch"
+              placeholder="Search truck or driver..."
+            >
+            <select class="tracking-filter" id="trackingStatusFilter" style="width:100%">
+              <option value="all">All statuses</option>
+              <option value="On Route">On Route</option>
+              <option value="Available">Available</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Offline">Offline</option>
+            </select>
+          </div>
+
+          <div class="tracking-list" id="trackingVehicleList"></div>
+        </article>
+      </div>
+
+      <article class="tracking-side-card" style="padding:16px">
+        <div class="tracking-card-head" style="padding:0 0 12px">
+          <div>
+            <h2>Vehicle details</h2>
+            <p>Selected truck information</p>
+          </div>
+        </div>
+        <div id="trackingDetails" class="tracking-details">
+          <p style="color:#91a2b7;font-size:11px">
+            Select a truck on the map or from the vehicle list.
+          </p>
+        </div>
+      </article>
+
+      <div class="tracking-disclaimer">
+        DEMO GPS MODE — Positions are approximate sample city coordinates,
+        not live vehicle telemetry. No real GPS, ELD, traffic, or driver
+        location data is being received. Real-time tracking requires a
+        connected provider and secure backend.
+      </div>
+    </div>
+
+    <footer>
+      © 2026 Northstar Logistics Intelligence
+      <span>Fleet Tracking · Demonstration data</span>
+    </footer>
+  `;
+
+  const dispatchPage = $("#page-dispatch");
+
+  if (dispatchPage) {
+    dispatchPage.insertAdjacentElement("beforebegin", page);
+  } else {
+    document.querySelector(".main").appendChild(page);
+  }
+
+  $("#trackingSearch").addEventListener("input", renderTrackingList);
+
+  $("#trackingStatusFilter").addEventListener("change", event => {
+    trackingFilter = event.target.value;
+    renderTrackingList();
+  });
+
+  $("#trackingResetMap").addEventListener("click", () => {
+    if (northstarMap) {
+      northstarMap.setView([39.5,-98.35], 4);
+    }
+  });
+
+  $("#trackingVehicleList").addEventListener("click", event => {
+    const item = event.target.closest("[data-tracking-id]");
+    if (item) selectTrackingTruck(item.dataset.trackingId);
+  });
+
+  renderTrackingStats();
+  renderTrackingList();
+}
+
+/* ---------- LEAFLET MAP LOADER ---------- */
+
+function loadTrackingMapLibrary() {
+  return new Promise((resolve, reject) => {
+    if (window.L) {
+      resolve();
+      return;
+    }
+
+    if (!document.querySelector("#leaflet-css")) {
+      const css = document.createElement("link");
+      css.id = "leaflet-css";
+      css.rel = "stylesheet";
+      css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(css);
+    }
+
+    const existing = document.querySelector("#leaflet-js");
+
+    if (existing) {
+      existing.addEventListener("load", resolve, {once:true});
+      existing.addEventListener("error", reject, {once:true});
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "leaflet-js";
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+/* ---------- MAP INITIALIZATION ---------- */
+
+async function activateTrackingPage() {
+  if (!$("#page-tracking")) return;
+
+  try {
+    await loadTrackingMapLibrary();
+
+    if (!northstarMap) {
+      northstarMap = L.map("northstarMap", {
+        scrollWheelZoom:true
+      }).setView([39.5,-98.35],4);
+
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution:'&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+          subdomains:"abcd",
+          maxZoom:19
+        }
+      ).addTo(northstarMap);
+    }
+
+    setTimeout(() => {
+      northstarMap.invalidateSize();
+      renderTrackingMarkers();
+    },150);
+
+  } catch (error) {
+    console.error("Tracking map error:",error);
+
+    $("#northstarMap").innerHTML = `
+      <div class="tracking-empty">
+        Map library could not load. Check your internet connection
+        and refresh the page.
+      </div>
+    `;
+  }
+}
+
+/* ---------- TRACKING DATA ---------- */
+
+function getTrackingLoad(truck) {
+  return loads.find(load =>
+    load.driver === truck.driver &&
+    load.status !== "Delivered"
+  );
+}
+
+function renderTrackingStats() {
+  const target = $("#trackingStats");
+  if (!target) return;
+
+  const total = trucks.length;
+  const moving = trucks.filter(t => t.status === "On Route").length;
+  const available = trucks.filter(t => t.status === "Available").length;
+  const attention = trucks.filter(t =>
+    ["Maintenance","Offline"].includes(t.status)
+  ).length;
+
+  target.innerHTML = `
+    <div class="tracking-stat">
+      <span>Total vehicles</span>
+      <strong>${total}</strong>
+    </div>
+    <div class="tracking-stat">
+      <span>On route</span>
+      <strong style="color:#a993ff">${moving}</strong>
+    </div>
+    <div class="tracking-stat">
+      <span>Available</span>
+      <strong style="color:#4ed5a5">${available}</strong>
+    </div>
+    <div class="tracking-stat">
+      <span>Needs attention</span>
+      <strong style="color:#f0b36f">${attention}</strong>
+    </div>
+  `;
+}
+
+function renderTrackingList() {
+  const list = $("#trackingVehicleList");
+  if (!list) return;
+
+  const query = ($("#trackingSearch")?.value || "").toLowerCase();
+
+  const filtered = trucks.filter(truck => {
+    const matchesStatus =
+      trackingFilter === "all" || truck.status === trackingFilter;
+
+    const searchText = [
+      truck.id,
+      truck.model,
+      truck.driver,
+      truck.location,
+      truck.plate
+    ].join(" ").toLowerCase();
+
+    return matchesStatus && searchText.includes(query);
+  });
+
+  $("#trackingVehicleCount").textContent =
+    `${filtered.length} of ${trucks.length} vehicles`;
+
+  list.innerHTML = filtered.map(truck => `
+    <div class="tracking-truck ${
+      selectedTrackingTruck === truck.id ? "selected" : ""
+    }" data-tracking-id="${escapeHTML(truck.id)}">
+      <div class="tracking-truck-top">
+        <b>${escapeHTML(truck.id)}</b>
+        ${fleetStatus(truck.status)}
+      </div>
+      <small>${escapeHTML(truck.model)}</small>
+      <small>⌖ ${escapeHTML(truck.location)}</small>
+      <small>Driver: ${escapeHTML(truck.driver || "Unassigned")}</small>
+    </div>
+  `).join("") || `
+    <div class="tracking-empty">No matching vehicles found.</div>
+  `;
+}
+
+/* ---------- MAP MARKERS ---------- */
+
+function renderTrackingMarkers() {
+  if (!northstarMap) return;
+
+  Object.values(trackingMarkers).forEach(marker => {
+    northstarMap.removeLayer(marker);
+  });
+
+  trackingMarkers = {};
+
+  trucks.forEach(truck => {
+    const coords = trackingCoordinates(truck.location);
+
+    const marker = L.marker(coords, {
+      icon:trackingMarkerIcon(truck.status)
+    }).addTo(northstarMap);
+
+    marker.bindPopup(`
+      <b>${escapeHTML(truck.id)}</b><br>
+      ${escapeHTML(truck.model)}<br>
+      Driver: ${escapeHTML(truck.driver || "Unassigned")}<br>
+      Status: ${escapeHTML(truck.status)}<br>
+      Location: ${escapeHTML(truck.location)}
+    `);
+
+    marker.on("click", () => {
+      selectTrackingTruck(truck.id);
+    });
+
+    trackingMarkers[truck.id] = marker;
+  });
+}
+
+/* ---------- SELECT VEHICLE ---------- */
+
+function selectTrackingTruck(id) {
+  const truck = trucks.find(item => item.id === id);
+  if (!truck) return;
+
+  selectedTrackingTruck = id;
+
+  const load = getTrackingLoad(truck);
+  const details = $("#trackingDetails");
+
+  const coords = trackingCoordinates(truck.location);
+
+  details.innerHTML = `
+    <h3>${escapeHTML(truck.id)} · ${escapeHTML(truck.model)}</h3>
+
+    <div class="tracking-detail-row">
+      <span>License plate</span>
+      <b>${escapeHTML(truck.plate)}</b>
+    </div>
+
+    <div class="tracking-detail-row">
+      <span>Vehicle type</span>
+      <b>${escapeHTML(truck.type)}</b>
+    </div>
+
+    <div class="tracking-detail-row">
+      <span>Driver</span>
+      <b>${escapeHTML(truck.driver || "Unassigned")}</b>
+    </div>
+
+    <div class="tracking-detail-row">
+      <span>Current location</span>
+      <b>${escapeHTML(truck.location)}</b>
+    </div>
+
+    <div class="tracking-detail-row">
+      <span>Vehicle status</span>
+      <b>${escapeHTML(truck.status)}</b>
+    </div>
+
+    <div class="tracking-detail-row">
+      <span>Active load</span>
+      <b>${escapeHTML(load?.id || "No active load")}</b>
+    </div>
+
+    <div class="tracking-detail-row">
+      <span>Coordinates</span>
+      <b>${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}</b>
+    </div>
+
+    <div class="tracking-detail-row">
+      <span>Position type</span>
+      <b>Demo city coordinate</b>
+    </div>
+  `;
+
+  renderTrackingList();
+
+  if (northstarMap && trackingMarkers[id]) {
+    northstarMap.setView(
+      trackingMarkers[id].getLatLng(),
+      7
+    );
+
+    trackingMarkers[id].openPopup();
+  }
+}
+
+/* ---------- DATA REFRESH ---------- */
+
+function refreshTracking() {
+  renderTrackingStats();
+  renderTrackingList();
+
+  if (northstarMap) {
+    renderTrackingMarkers();
+  }
+}
+
+/* ---------- STARTUP ---------- */
+
+document.addEventListener("DOMContentLoaded", () => {
+  createTrackingPage();
+
+  window.addEventListener("hashchange", () => {
+    if (location.hash === "#tracking") {
+      showPage("tracking");
+      activateTrackingPage();
+    }
+  });
+
+  if (location.hash === "#tracking") {
+    showPage("tracking");
+    activateTrackingPage();
+  }
+
+  console.log("Northstar Fleet Tracking initialized.");
+});
+
